@@ -5,11 +5,8 @@ from bs4 import  BeautifulSoup
 import time
 
 
-#File to store the data in
-f = open('ngo_list.csv', 'w')
-
-#This will store all the ngos with name_of_ngo as key and
-#list of reg_no as value it will help ignore duplicacy of NGO
+#This stores the set of all the ngos with their date_of_reg in the format name-date_of_reg
+#so if there is any repetation of NGO then we can easily detect it
 set_of_ngo = set()
 
 
@@ -39,7 +36,7 @@ def update_soup(sector, page = 0):
     tr_ke_bhai = tr.find_next_siblings()
     siblings = [ele for idx, ele in enumerate(tr_ke_bhai) if idx % 2 == 0]
     stop = time.time()
-    print("Time taken to update soup: %.1f" % (stop-start))
+    return stop-start
 
 # All the different sectors on the internet
 sectors = ['AGE', 'AGR', 'ADF', 'ZAO', 'ART', 'BIT', 'CHI',
@@ -48,6 +45,9 @@ sectors = ['AGE', 'AGR', 'ADF', 'ZAO', 'ART', 'BIT', 'CHI',
            'LRC', 'LAA', 'MIC', 'MSM', 'MIS', 'NRE', 'NUT',
            'PAN', 'PRI', 'RTI', 'RUR', 'SNT', 'SIR', 'SPO',
            'TUR', 'TRI', 'UDP', 'VOC', 'WAT', 'WOM', 'YOU']
+
+file_name = 'ngo_AGE.csv'
+f = open(file_name, 'w')
 
 
 #Fetching the data from the base_url to the content
@@ -58,11 +58,13 @@ for sector in sectors:
     #Update soup with the sector
     update_soup(sector)
 
+    f = open('ngo_list_%s.csv' % (sector), 'w')
+
     #Search for the number of total items in the sector
     #on the first page and then compute the number of
     #pages based on the number of items
-    pointer = soup.find('td', class_='hm_section_head_bg1')
-    nums = pointer.strong.string[pointer.strong.string.find('(')+1:pointer.strong.string.find(')')]
+    pointer_to_td = soup.find('td', class_='hm_section_head_bg1')
+    nums = pointer_to_td.strong.string[pointer_to_td.strong.string.find('(')+1:pointer_to_td.strong.string.find(')')]
     pages = int(nums) / 200
     print ('Number of pages to parse: ' + str(pages))
 
@@ -70,7 +72,7 @@ for sector in sectors:
         print("Page number: "+ str(page))
 
         #Update soup with the sector and the page number
-        update_soup(sector, page)
+        update_time = update_soup(sector, page)
 
         #If tr_ke_bhai does not have anything inside it
         if tr_ke_bhai == None:
@@ -91,8 +93,10 @@ for sector in sectors:
                 if string == None:
                     continue
                 if idx == 0:
-                    reg_no = string[0:string.find('(')].replace(',',':').strip()
-                    date_of_reg = string[string.find('(')+1:string.find(')')].replace(',',':')
+                    reg_no = string[0:len(string)-12].replace(',',':').strip()
+                    #First take the string then reverses the string and then slices the text between ) and (
+                    #and then replace any comma with colon and then again reverses it
+                    date_of_reg = string[::-1][1:11].replace(',',':')[::-1]
                 else:
                     add_of_reg = capitalize(string)
 
@@ -142,5 +146,13 @@ for sector in sectors:
                 add_of_reg +', '+ name_of_cheif +', '+
                 add_of_ngo +', '+ sectors)
 
+            #Printing the stats of each loop iteration
             stop = time.time()
-            print("Time taken for computation of one entry: %.4f" % (stop-start))
+            print("Time taken for computation of one entry: %.4f Seconds" % (stop-start))
+            print('\n')
+            print("Appending to %s" %(file_name))
+            print('\n')
+            print("Time taken for updating soup: %.2f Seconds" % (update_time))
+            print('\n')
+
+    f.write('Done')
