@@ -3,11 +3,17 @@
 import urllib.request
 from bs4 import  BeautifulSoup
 import time
+import sys
 
-
+cookieProcessor = urllib.request.HTTPCookieProcessor()
+opener = urllib.request.build_opener(cookieProcessor)
 #This stores the set of all the ngos with their date_of_reg in the format name-date_of_reg
 #so if there is any repetation of NGO then we can easily detect it
 set_of_ngo = set()
+entry = int(sys.argv[2])
+file_start = (entry - entry % 1000)
+file_end = file_start + 1000
+print("Starting again from file : ngo_list_%d-%d.csv" % (file_start,file_end)
 
 
 def capitalize(string):
@@ -38,13 +44,6 @@ def update_soup(sector, page = 0):
     stop = time.time()
     return stop-start
 
-# All the different sectors on the internet
-sectors = ['AGE', 'AGR', 'ADF', 'ZAO', 'ART', 'BIT', 'CHI',
-           'CIV', 'DUP', 'DID', 'DIR', 'DWA', 'EDU', 'ENV',
-           'FPR', 'HEA', 'HIV', 'HOU', 'HRT', 'ICT', 'LEM',
-           'LRC', 'LAA', 'MIC', 'MSM', 'MIS', 'NRE', 'NUT',
-           'PAN', 'PRI', 'RTI', 'RUR', 'SNT', 'SIR', 'SPO',
-           'TUR', 'TRI', 'UDP', 'VOC', 'WAT', 'WOM', 'YOU']
 
 file_name = 'ngo_AGE.csv'
 f = open(file_name, 'w')
