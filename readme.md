@@ -21,7 +21,9 @@ How to execute?
 
 
 ```
-python3 parser.py
+python3 parser.py entry-to-start-from
+
+ex - python3 parser.py 5006
 ```
 
 Made with love in Python 3.
