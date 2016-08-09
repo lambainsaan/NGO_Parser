@@ -1,157 +1,107 @@
-
-
 import urllib.request
 from bs4 import  BeautifulSoup
 import time
 import sys
+import json
+
 
 cookieProcessor = urllib.request.HTTPCookieProcessor()
 opener = urllib.request.build_opener(cookieProcessor)
 #This stores the set of all the ngos with their date_of_reg in the format name-date_of_reg
 #so if there is any repetation of NGO then we can easily detect it
-set_of_ngo = set()
-entry = int(sys.argv[2])
-file_start = (entry - entry % 1000)
+
+#Stores the soup to handle http://ngo.india.gov.in/sector_ngolist_ngo.php?page=1&psid=&records=200
+url = "http://ngo.india.gov.in/sector_ngolist_ngo.php?page=1&psid=&records=200"
+content=urllib.request.urlopen(url).read()
+soup = BeautifulSoup(content,'lxml')
+start_page, pages = 1, 359
+#Gets in the entry you got an error on.
+entry = int(sys.argv[1])
+file_start = entry - entry % 1000
 file_end = file_start + 1000
-print("Starting again from file : ngo_list_%d-%d.csv" % (file_start,file_end)
 
+#Search for the number of total items
+#on the first page and then compute the number of
+#pages based on the number of items
+pointer_to_td = soup.find('td', class_='hm_section_head_bg1')
+nums = pointer_to_td.strong.string[pointer_to_td.strong.string.find('(')+1:pointer_to_td.strong.string.find(')')]
+pages = int(nums) / 200
+start_page = file_start // 200
 
-def capitalize(string):
-    '''
-    Function for capitalizing the different words in the given string
-    '''
-    name_words = [word.capitalize() for word in string.split()]
-    name = ''
-    for word in name_words:
-        name += word + ' '
-    name = name.rstrip().replace(',',':').replace('\n', ' ')
-    return name
+#Just a temporary workaround
+if file_start == 0:
+    file_start, file_end, start_page = 1, 1000, 1
 
-content, soup, tr, tr_ke_bhai,siblings = [0,0,0,0,0]
+file_name = 'ngo_list_%d-%d.json'  % (file_start,file_end)
+f = open(file_name, 'w')
+print("Starting again from file : %s" %(file_name))
 
-def update_soup(sector, page = 0):
+def a_tags_parser(page):
     '''
-    Updates the soup with the sector and the page number provided
+    Returns all the anchor tags of intrest so that you can parse out all the JS calls made by the anchor tag
     '''
-    start = time.time()
-    global content, soup, tr, tr_ke_bhai,siblings
-    url = "http://ngo.india.gov.in/sector_ngolist_ngo.php?page=%s&psid=%s&records=200" % (str(page), sector)
+    global soup
+    url = "http://ngo.india.gov.in/sector_ngolist_ngo.php?page=%s&psid=&records=200" % (str(page))
     content=urllib.request.urlopen(url).read()
     soup = BeautifulSoup(content,'lxml')
     tr = soup.find('tr', "hm_section_head_bg1")
     tr_ke_bhai = tr.find_next_siblings()
-    siblings = [ele for idx, ele in enumerate(tr_ke_bhai) if idx % 2 == 0]
-    stop = time.time()
-    return stop-start
+    a_tags = [ele.a for idx, ele in enumerate(tr_ke_bhai) if idx % 2 == 0]
+    return a_tags
+
+def js_parser(a_tag,page):
+    func_call = a_tag['href']
+    a, b, c, d = func_call[21:func_call[21:].find("'")+21], 200 , page , func_call[::-1][2:func_call[::-1].find("'")+2][::-1]
+    return a,b,c,d
+
+def get_doc(a, b, c, d):
+    return {'ngo_id': a, 'records_no': b, 'page_no': c,'page_val': '1', 'issue_id':'', 'ngo_black':d, 'records_no':'' }
 
 
-file_name = 'ngo_AGE.csv'
-f = open(file_name, 'w')
+print ('Number of pages to parse: ' + str(pages))
+
+for page in range(int(start_page), int(pages)+1):
+    print("Page number: "+ str(page) + ' / ' + str(pages))
+    #If entry has reached multiple of 1000 make a new file
+    if page*200 % 1000 == 0:
+        file_name = 'ngo_list_%d-%d.json'  % (page*200,page*200+1000)
+        f = open(file_name, 'w')
 
 
-#Fetching the data from the base_url to the content
 
-#This stores the pointer to the tr tag from where
-# the table begins
-for sector in sectors:
-    #Update soup with the sector
-    update_soup(sector)
+    #Fetches all the important anchor tags from that page
+    a_tags = a_tags_parser(page)
 
-    f = open('ngo_list_%s.csv' % (sector), 'w')
+    for a_tag in a_tags:
+        strt = time.time()
+        #Fetch value for a, b, c, d for a_tag
+        a, b, c, d = js_parser(a_tag,page)
 
-    #Search for the number of total items in the sector
-    #on the first page and then compute the number of
-    #pages based on the number of items
-    pointer_to_td = soup.find('td', class_='hm_section_head_bg1')
-    nums = pointer_to_td.strong.string[pointer_to_td.strong.string.find('(')+1:pointer_to_td.strong.string.find(')')]
-    pages = int(nums) / 200
-    print ('Number of pages to parse: ' + str(pages))
+        # Encode it to send it along with the soup
+        data = urllib.parse.urlencode(get_doc(a,b,c,d)).encode()
+        soup = BeautifulSoup(opener.open('http://ngo.india.gov.in/view_ngo_details_ngo.php', data), "lxml")
 
-    for page in range(int(pages)+1):
-        print("Page number: "+ str(page))
-
-        #Update soup with the sector and the page number
-        update_time = update_soup(sector, page)
-
-        #If tr_ke_bhai does not have anything inside it
-        if tr_ke_bhai == None:
-            continue
-
-        for bhai in siblings:
-            # Name of the ngo and properly organising it
-            start = time.time()
-            if (bhai.a.string == None or bhai.find_all('td')[3].string == None
-            or bhai.find_all('td')[4].string == None or bhai.find_all('td')[5].string == None):
-                continue
-
-            name = capitalize(bhai.a.string)
-
-
-            #Getting reg_no, date_of_reg, add_of_reg of the ngo
-            for idx, string in enumerate(bhai.find_all('td')[2].stripped_strings):
-                if string == None:
+        # We start with the first tag with class hm_section_head_bg1
+        start = soup.find_all(class_='hm_section_head_bg1')[0]
+        name = start.text[10:].strip()
+        # Then we go to it's Parent and while it has siblings continue
+        tr = start.parent
+        entry = {}
+        for tr_sibling in tr.find_next_siblings()[:len(tr.find_next_siblings())-1]:
+            td = tr_sibling.find_all('td')
+            if len(td) == 4:
+                if td[1].string == None or td[3].string == None:
                     continue
-                if idx == 0:
-                    reg_no = string[0:len(string)-12].replace(',',':').strip()
-                    #First take the string then reverses the string and then slices the text between ) and (
-                    #and then replace any comma with colon and then again reverses it
-                    date_of_reg = string[::-1][1:11].replace(',',':')[::-1]
                 else:
-                    add_of_reg = capitalize(string)
+                    key = td[1].string.strip()
 
-
-            # Name of Cheif Functionary
-            name_of_cheif = capitalize(bhai.find_all('td')[3].string)
-            #Address of the ngo
-            add_of_ngo = capitalize(bhai.find_all('td')[4].string)
-            #Sectors working in
-            sectors = bhai.find_all('td')[5].string.replace(',',':').replace('\n', '').strip()
-
-            #Prints the data that is appended in a pretty format
-            print('============================================================================================')
-            print('|')
-            print('|')
-            print('|    Name: %s' %(name))
-            print('|')
-            print('|')
-            print('|    Date of Reg: %s' % (date_of_reg))
-            print('|')
-            print('|')
-            print('|    Reg. Number: %s' % (reg_no))
-            print('|')
-            print('|')
-            print('|    Address of Registeration: %s' % (add_of_ngo))
-            print('|')
-            print('|')
-            print('|    Name of Cheif: %s' % (name_of_cheif))
-            print('|')
-            print('|')
-            print('|    Address of NGO: %s' % (add_of_ngo))
-            print('|')
-            print('|')
-            print('|    Sectors working in : %s' % (sectors))
-            print('|')
-            print('|')
-            print('============================================================================================')
+                value = td[3].string.strip()
+                entry[key] = value
 
 
 
-
-
-            #If the data is not present in the set add it and append it to the file
-            if name+'-'+date_of_reg not in set_of_ngo:
-                set_of_ngo.add(name+'-'+date_of_reg)
-                f.write('\n' + name +', '+ reg_no +', '+ date_of_reg +', '+
-                add_of_reg +', '+ name_of_cheif +', '+
-                add_of_ngo +', '+ sectors)
-
-            #Printing the stats of each loop iteration
-            stop = time.time()
-            print("Time taken for computation of one entry: %.4f Seconds" % (stop-start))
-            print('\n')
-            print("Appending to %s" %(file_name))
-            print('\n')
-            print("Time taken for updating soup: %.2f Seconds" % (update_time))
-            print('\n')
-
-    f.write('Done')
+        print(json.dumps(entry, sort_keys=True, indent=4))
+        f.write(',\n' + json.dumps(entry, sort_keys=True, indent=4))
+        stop = time.time()
+        print("\n\n=============================================================== \n \n")
+        print("Time taken for computation of this entry: %.4f Seconds" % (stop-strt))
